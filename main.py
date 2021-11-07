@@ -2,6 +2,9 @@
 
 import argparse
 from data import build_rocstories_dataset
+from model import train_model
+
+import torch
 
 
 if __name__ == '__main__':
@@ -11,6 +14,8 @@ if __name__ == '__main__':
     parser.add_argument('--rocstories', action='store_true')
     parser.add_argument('--github', action='store_true')
     parser.add_argument('--output', help='Path to output file.')
+    parser.add_argument('--dataset', help='Path to pre-processed dataset.')
+    parser.add_argument('--devices', help='Torch device to run on.', default= 'cpu')
 
     opt = parser.parse_args()
 
@@ -19,3 +24,5 @@ if __name__ == '__main__':
             build_rocstories_dataset(opt.output)
         else:
             raise ValueError('Specify one of --rocstories or --github')
+    elif opt.train:
+        train_model(opt.dataset, list(map(int, opt.devices.split(','))))
