@@ -4,16 +4,18 @@ import csv
 from dataclasses import dataclass
 from typing import List, Dict
 import random
+from tqdm import tqdm
 
+import torch
 from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, decoders, trainers
 from tokenizers.trainers import BpeTrainer
 
 
 @dataclass
 class Example:
-    context: List[int]
-    signal: List[int]
-    answer: List[int]
+    context: str
+    signal: str
+    answer: str
 
 
 @dataclass
@@ -59,7 +61,7 @@ def random_split(l, proportions):
     return tuple(splits)
 
 
-def build_rocstories_dataset():
+def build_rocstories_dataset(output):
     def load_rocstories(path):
         with open(path) as f:
             return [ShortStory(title=row['storytitle'],
@@ -72,7 +74,7 @@ def build_rocstories_dataset():
     def make_examples(stories):
         ex = []
 
-        for s in stories:
+        for s in tqdm(stories):
             for i in range(10):
                 for k in range(1, 5):
                     target_line = random.randint(0, len(s.lines) - 1)
@@ -91,4 +93,5 @@ def build_rocstories_dataset():
     tokenizer = train_tokenizer(tokenizer_data)
 
     train_ex, val_ex, test_ex = make_examples(train), make_examples(val), make_examples(test)
-    return Dataset(train_ex, val_ex, test_ex, tokenizer)
+    d = Dataset(train_ex, val_ex, test_ex, tokenizer)
+    torch.save(d, output)
