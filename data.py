@@ -38,7 +38,7 @@ def train_tokenizer(data):
     tokenizer.decoders = decoders.ByteLevel()
 
     trainer = BpeTrainer(
-        special_tokens=["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]"],
+        special_tokens=["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]", "[BOS]", "[EOS]"],
         vocab_size=2048,
     )
 
