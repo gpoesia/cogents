@@ -126,12 +126,18 @@ def train_model(dataset_path, devices, transformer, output_path):
     torch.save(model, output_path)
 
 
-def generate_from_model(dataset_path, device):
+def generate_from_model(dataset_path, model_path, device):
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
 
-    model = VanillaTransformer(dataset.tokenizer)
-    model.to(device=device)
+    if model_path is None:
+        model = VanillaTransformer(dataset.tokenizer)
+        model.to(device=device)
+    else:
+        pl_state = torch.load(model_path, map_location=torch.device('cpu'))
+        model = VanillaTransformer(dataset.tokenizer)
+        model.load_state_dict(pl_state['state_dict'])
+        breakpoint()
 
     test_loader = DataLoader(dataset.train, batch_size=64, collate_fn=list)
 

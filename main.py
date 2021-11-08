@@ -14,6 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--rocstories', action='store_true')
     parser.add_argument('--github', action='store_true')
+    parser.add_argument('--model', help='Path to trained model.')
     parser.add_argument('--output', help='Path to output file.')
     parser.add_argument('--dataset', help='Path to pre-processed dataset.')
     parser.add_argument('--devices', help='Torch device to run on.', default= 'cpu')
@@ -33,4 +34,4 @@ if __name__ == '__main__':
                 opt.transformer,
                 opt.output)
     elif opt.test:
-        generate_from_model(opt.dataset, torch.device(opt.devices))
+        generate_from_model(opt.dataset, opt.model, torch.device(opt.devices))
