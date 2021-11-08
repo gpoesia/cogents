@@ -63,7 +63,6 @@ class VanillaTransformer(pl.LightningModule):
         after_sep = sep_index.cumsum(dim=1).long()
         after_sep -= sep_index.long()
         target *= after_sep
-
         return loss(y, target)
 
 
@@ -71,14 +70,25 @@ class VanillaTransformer(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
 
+class SignalTransformer(VanillaTransformer):
+    def training_step(self, batch, batch_idx):
+        for e in batch:
+            e.context = e.signal + '[CLS]' + e.context
+        return(VanillaTransformer.training_step(self, batch, batch_idx))
 
-def train_model(dataset_path, devices):
+
+
+
+def train_model(dataset_path, devices, transformer):
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
 
     trainer = pl.Trainer(devices=devices, accelerator="auto")
     train_loader = DataLoader(dataset.train, batch_size=32, collate_fn=list)
 
-    model = VanillaTransformer(dataset.tokenizer)
+    if transformer=='vanilla':
+        model = VanillaTransformer(dataset.tokenizer)
+    elif transformer=='signal':
+        model = SignalTransformer(dataset.tokenizer)
 
     trainer.fit(model, train_loader)

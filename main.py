@@ -16,6 +16,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', help='Path to output file.')
     parser.add_argument('--dataset', help='Path to pre-processed dataset.')
     parser.add_argument('--devices', help='Torch device to run on.', default= 'cpu')
+    parser.add_argument('--transformer', help='which transformer to use', default= 'vanilla')
 
     opt = parser.parse_args()
 
@@ -25,4 +26,7 @@ if __name__ == '__main__':
         else:
             raise ValueError('Specify one of --rocstories or --github')
     elif opt.train:
-        train_model(opt.dataset, list(map(int, opt.devices.split(','))))
+        if opt.devices=='cpu':
+            train_model(opt.dataset, [], opt.transformer)
+        else:
+            train_model(opt.dataset, list(map(int, opt.devices.split(','))), opt.transformer)
