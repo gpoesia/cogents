@@ -2,7 +2,7 @@
 
 import argparse
 from data import build_rocstories_dataset
-from model import train_model
+from model import train_model, generate_from_model
 
 import torch
 
@@ -11,6 +11,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Cogents: Controllable Generation of Text from Slices')
     parser.add_argument('--build-dataset', action='store_true')
     parser.add_argument('--train', action='store_true')
+    parser.add_argument('--test', action='store_true')
     parser.add_argument('--rocstories', action='store_true')
     parser.add_argument('--github', action='store_true')
     parser.add_argument('--output', help='Path to output file.')
@@ -26,7 +27,10 @@ if __name__ == '__main__':
         else:
             raise ValueError('Specify one of --rocstories or --github')
     elif opt.train:
-        if opt.devices=='cpu':
-            train_model(opt.dataset, [], opt.transformer)
-        else:
-            train_model(opt.dataset, list(map(int, opt.devices.split(','))), opt.transformer)
+        train_model(
+                opt.dataset, 
+                [] if opt.devices == 'cpu' else list(map(int, opt.devices.split(','))),
+                opt.transformer,
+                opt.output)
+    elif opt.test:
+        generate_from_model(opt.dataset, torch.device(opt.devices))
