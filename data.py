@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 import torch
 from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, decoders, trainers
-from tokenizers.trainers import BpeTrainer
+from tokenizers.trainers import BpeTrainer, WordPieceTrainer
 
 
 @dataclass
@@ -33,12 +33,13 @@ class ShortStory:
 
 
 def train_tokenizer(data):
-    tokenizer = Tokenizer(models.BPE())
-    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel()
-    tokenizer.decoders = decoders.ByteLevel()
+    tokenizer = Tokenizer(models.WordPiece())
+    tokenizer.normalizer = normalizers.BertNormalizer()
+    tokenizer.pre_tokenizer = pre_tokenizers.BertPreTokenizer()
+    tokenizer.decoder = decoders.WordPiece()
 
-    trainer = BpeTrainer(
-        special_tokens=["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]", "[BOS]", "[EOS]"],
+    trainer = WordPieceTrainer(
+        special_tokens=["[UNK]", "[SIG]", "[SEP]", "[PAD]", "[MASK]", "[BOS]", "[EOS]"],
         vocab_size=2048,
     )
 
@@ -94,4 +95,5 @@ def build_rocstories_dataset(output):
 
     train_ex, val_ex, test_ex = make_examples(train), make_examples(val), make_examples(test)
     d = Dataset(train_ex, val_ex, test_ex, tokenizer)
+    print(len(train_ex), 'training examples.')
     torch.save(d, output)
