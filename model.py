@@ -23,14 +23,14 @@ class VanillaTransformer(pl.LightningModule):
     def __init__(self, tokenizer=None, config={}, device=None):
         super().__init__()
 
-        embedding_size = config.get('embedding_dim', 256)
+        embedding_size = config.get('embedding_dim', 512)
 
         self.gpt_config = GPT2Config(
             vocab_size=tokenizer.get_vocab_size(),
-            n_positions=512,
+            n_positions=300,
             n_embd=embedding_size,
             n_head=4,
-            n_layer=3,
+            n_layer=4,
         )
         self.gpt = GPT2Model(self.gpt_config)
         self.embeddings = nn.Embedding(tokenizer.get_vocab_size(),
@@ -98,23 +98,32 @@ class VanillaTransformer(pl.LightningModule):
         target *= after_sep
         return loss(y, target)
 
+    def validation_step(self, batch, batch_idx):
+        loss = self.training_step(batch, batch_idx)
+        self.log('validation_loss', loss, on_step=True, on_epoch=True, sync_dist=True)
+
+    def test_step(self, batch, batch_idx):
+        loss = self.training_step(batch, batch_idx)
+        self.log('test_loss', loss, on_step=True, on_epoch=True, sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return optimizer
 
+
 class SignalTransformer(VanillaTransformer):
     def training_step(self, batch, batch_idx):
         for e in batch:
-            e.context = e.signal + '[CLS]' + e.context
+            e.context = e.context + '[SIG]' + e.signal
         return(VanillaTransformer.training_step(self, batch, batch_idx))
 
 def train_model(dataset_path, devices, transformer, output_path):
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
+    print('Using devices', devices)
 
-    trainer = pl.Trainer(devices=devices, accelerator="auto")
-    train_loader = DataLoader(dataset.train, batch_size=128, collate_fn=list)
+    trainer = pl.Trainer(devices=devices, accelerator="auto", strategy='ddp')
+    train_loader = DataLoader(dataset.train, batch_size=128, collate_fn=list, shuffle=True)
     val_loader = DataLoader(dataset.val, batch_size=64, collate_fn=list)
 
     if transformer == 'vanilla':
@@ -139,7 +148,7 @@ def generate_from_model(dataset_path, model_path, device):
         model.load_state_dict(pl_state['state_dict'])
         breakpoint()
 
-    test_loader = DataLoader(dataset.train, batch_size=64, collate_fn=list)
+    test_loader = DataLoader(dataset.test, batch_size=64, collate_fn=list)
 
     for batch in test_loader:
         g = model.generate(batch)
