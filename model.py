@@ -73,20 +73,21 @@ class VanillaTransformer(pl.LightningModule):
 
         done = set()
         outputs = [list() for _ in batch]
+        pred_index = [len(enc) - 1 for enc in x_encs]
 
         with torch.no_grad():
             j = 0
             while len(done) < len(batch) and j < max_len:
                 j += 1
                 y, past_kv = self.forward(x_emb, mask, emb_index, past_kv)
-                y = y[:, -1, :]
+                y = y[torch.arange(len(batch)), pred_index, :]
                 # Increment position embedding index.
-                emb_index = emb_index.max(axis=0).unsqueeze(0) + 1
+                emb_index = emb_index.max(axis=1, keepdim=True).values + 1
                 # Use all tokens after first iteration.
-
                 next_y = Categorical(logits=y).sample()
-                mask = torch.ones((y.shape[0], 1))
+                mask = torch.ones((y.shape[0], 1), device=self.device)
                 x_emb = self.embeddings(next_y.unsqueeze(1))
+                pred_index = torch.zeros(y.shape[0], dtype=torch.long, device=self.device)
 
                 for i, t in enumerate(next_y):
                     if t == self.tokenizer.token_to_id('[EOS]'):
@@ -103,14 +104,24 @@ class VanillaTransformer(pl.LightningModule):
         # For training, ignore prediction on last token ([EOS]).
         y = y.transpose(1, 2)[:, :, :-1]
 
-        celoss = nn.CrossEntropyLoss(ignore_index=self.tokenizer.token_to_id('[SEP]'))
+        # By default, celoss ignores columns where target label is -100.
+        celoss = nn.CrossEntropyLoss()
 
         target = torch.tensor([e.ids for e in x_encs], device=self.device) # (B, S)
         target = target[:, 1:]
         sep_index = (target == self.tokenizer.token_to_id('[SEP]'))
         after_sep = sep_index.cumsum(dim=1).long()
         after_sep -= sep_index.long()
-        target *= after_sep
+
+        eos_index = (target == self.tokenizer.token_to_id('[EOS]'))
+        after_eos = eos_index.cumsum(dim=1).long()
+        after_eos -= eos_index.long()
+
+        pred_range = after_sep - after_eos
+
+        # For computing the loss, overwrite all tokens before [SEP] as -100 tokens
+        # since those are ignored by celoss.
+        target = pred_range * target + (1 - pred_range) * -100
         loss = celoss(y, target)
 
         if log:
@@ -168,11 +179,11 @@ def generate_from_model(dataset_path, model_path, device):
         pl_state = torch.load(model_path, map_location=torch.device('cpu'))
         model = VanillaTransformer(dataset.tokenizer)
         model.load_state_dict(pl_state['state_dict'])
-        breakpoint()
 
-    test_loader = DataLoader(dataset.test, batch_size=1, collate_fn=list)
+    test_loader = DataLoader(dataset.test, batch_size=30, collate_fn=list, shuffle=True)
 
     for batch in test_loader:
         g = model.generate(batch)
+        break
 
     print(g)
