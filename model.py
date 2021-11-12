@@ -24,14 +24,16 @@ class VanillaTransformer(pl.LightningModule):
     def __init__(self, tokenizer=None, config={}, device=None):
         super().__init__()
 
-        embedding_size = config.get('embedding_dim', 512)
+        # embedding_size = config.get('embedding_dim', 512)
+        embedding_size = config.get('embedding_dim', 768)
 
         self.gpt_config = GPT2Config(
             vocab_size=tokenizer.get_vocab_size(),
-            n_positions=400,
+            n_positions=512,
+            n_ctx=512,
             n_embd=embedding_size,
-            n_head=4,
-            n_layer=6,
+            n_head=12,
+            n_layer=12,
             pad_token_id=tokenizer.token_to_id('[PAD]'),
         )
         self.gpt = GPT2Model(self.gpt_config)
@@ -51,7 +53,7 @@ class VanillaTransformer(pl.LightningModule):
         mask = torch.ones_like(emb_index)
 
         for i, e in enumerate(x_encs):
-            emb_index[i, len(e):] = 0
+            emb_index[i, len(e):] = len(e) - 1
             mask[i, len(e):] = 0
             e.pad(max_len)
 
@@ -73,7 +75,7 @@ class VanillaTransformer(pl.LightningModule):
 
         done = set()
         outputs = [list() for _ in batch]
-        pred_index = [len(enc) - 1 for enc in x_encs]
+        pred_index = emb_index.max(axis=1).values
 
         with torch.no_grad():
             j = 0
@@ -97,9 +99,9 @@ class VanillaTransformer(pl.LightningModule):
 
         return [self.tokenizer.decode(o) for o in outputs]
 
-    def training_step(self, batch, batch_idx, log=True):
+    def training_step(self, batch, batch_idx, log=True, restrict_loss=True):
         x_encs, x_emb, mask, emb_index = self.encode_batch(batch, append_answer=True)
-        y, last_kv = self.forward(x_emb, emb_index, mask)
+        y, last_kv = self.forward(x_emb, mask, emb_index)
 
         # For training, ignore prediction on last token ([EOS]).
         y = y.transpose(1, 2)[:, :, :-1]
@@ -122,6 +124,7 @@ class VanillaTransformer(pl.LightningModule):
         # For computing the loss, overwrite all tokens before [SEP] as -100 tokens
         # since those are ignored by celoss.
         target = pred_range * target + (1 - pred_range) * -100
+        # breakpoint()
         loss = celoss(y, target)
 
         if log:
@@ -138,7 +141,7 @@ class VanillaTransformer(pl.LightningModule):
         self.log('test_loss', loss, on_step=True, on_epoch=True, sync_dist=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=5e-5)
         return optimizer
 
 
@@ -146,6 +149,10 @@ class SignalTransformer(VanillaTransformer):
     def training_step(self, batch, batch_idx, *args, **kwargs):
         batch = [Example(e.context + '[SIG]' + e.signal, e.signal, e.answer) for e in batch]
         return VanillaTransformer.training_step(self, batch, batch_idx, *args, **kwargs)
+
+    def generate(self, batch, *args, **kwargs):
+        batch = [Example(e.context + '[SIG]' + e.signal, e.signal, e.answer) for e in batch]
+        return VanillaTransformer.generate(self, batch, *args, **kwargs)
 
 def train_model(dataset_path, devices, transformer, output_path):
     dataset = torch.load(dataset_path)
@@ -156,8 +163,8 @@ def train_model(dataset_path, devices, transformer, output_path):
 
     trainer = pl.Trainer(devices=devices, accelerator="auto", strategy='ddp', logger=logger)
 
-    train_loader = DataLoader(dataset.train, batch_size=64, collate_fn=list, shuffle=True)
-    val_loader = DataLoader(dataset.val, batch_size=64, collate_fn=list)
+    train_loader = DataLoader(dataset.train, batch_size=32, collate_fn=list, shuffle=True)
+    val_loader = DataLoader(dataset.val, batch_size=32, collate_fn=list)
 
     if transformer == 'vanilla':
         model = VanillaTransformer(dataset.tokenizer)
@@ -168,7 +175,7 @@ def train_model(dataset_path, devices, transformer, output_path):
     torch.save(model, output_path)
 
 
-def generate_from_model(dataset_path, model_path, device):
+def generate_from_model(dataset_path, model_path, transformer, device):
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
 
@@ -176,14 +183,24 @@ def generate_from_model(dataset_path, model_path, device):
         model = VanillaTransformer(dataset.tokenizer)
         model.to(device=device)
     else:
-        pl_state = torch.load(model_path, map_location=torch.device('cpu'))
-        model = VanillaTransformer(dataset.tokenizer)
-        model.load_state_dict(pl_state['state_dict'])
+        pl_state = torch.load(model_path, map_location=device)
 
-    test_loader = DataLoader(dataset.test, batch_size=30, collate_fn=list, shuffle=True)
+        if transformer == 'vanilla':
+            model = VanillaTransformer(dataset.tokenizer)
+        elif transformer == 'signal':
+            model = SignalTransformer(dataset.tokenizer)
+
+        model.load_state_dict(pl_state['state_dict'])
+        model.to(device)
+
+    test_loader = DataLoader(dataset.test, batch_size=32, collate_fn=list, shuffle=False)
 
     for batch in test_loader:
         g = model.generate(batch)
-        break
 
-    print(g)
+        for e, pred in zip(batch, g):
+            print('#' * 50)
+            print('Context:', e.context)
+            print('Signal:', e.signal)
+            print('Ground truth:', e.answer)
+            print('Sample from model:', pred)

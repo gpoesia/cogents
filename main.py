@@ -34,4 +34,4 @@ if __name__ == '__main__':
                 opt.transformer,
                 opt.output)
     elif opt.test:
-        generate_from_model(opt.dataset, opt.model, torch.device(opt.devices))
+        generate_from_model(opt.dataset, opt.model, opt.transformer, torch.device(opt.devices))
