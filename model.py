@@ -21,7 +21,7 @@ class CogentModel(pl.LightningModule):
 
 
 class VanillaTransformer(pl.LightningModule):
-    def __init__(self, tokenizer=None, config={}, device=None):
+    def __init__(self, tokenizer=None, config={}, device=None, n_head = 12, n_layer=12):
         super().__init__()
 
         # embedding_size = config.get('embedding_dim', 512)
@@ -32,8 +32,8 @@ class VanillaTransformer(pl.LightningModule):
             n_positions=512,
             n_ctx=512,
             n_embd=embedding_size,
-            n_head=12,
-            n_layer=12,
+            n_head=n_head,
+            n_layer=n_layer,
             pad_token_id=tokenizer.token_to_id('[PAD]'),
         )
         self.gpt = GPT2Model(self.gpt_config)
@@ -154,20 +154,23 @@ class SignalTransformer(VanillaTransformer):
         batch = [Example(e.context + '[SIG]' + e.signal, e.signal, e.answer) for e in batch]
         return VanillaTransformer.generate(self, batch, *args, **kwargs)
 
-def train_model(dataset_path, devices, transformer, output_path):
+def train_model(dataset_path, devices, transformer, output_path, strat='ddp', n_head = 12, n_layer = 12):
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
     print('Using devices', devices)
 
     logger = WandbLogger(project="cogent")
 
-    trainer = pl.Trainer(devices=devices, accelerator="auto", strategy='ddp', logger=logger)
+    if strat =='ddp':
+        trainer = pl.Trainer(devices=devices, accelerator="auto", strategy=strat, logger=logger)
+    else:
+        trainer = pl.Trainer(devices=devices, accelerator="auto", logger=logger)
 
     train_loader = DataLoader(dataset.train, batch_size=32, collate_fn=list, shuffle=True)
     val_loader = DataLoader(dataset.val, batch_size=32, collate_fn=list)
 
     if transformer == 'vanilla':
-        model = VanillaTransformer(dataset.tokenizer)
+        model = VanillaTransformer(dataset.tokenizer, n_head = n_head, n_layer = n_layer)
     elif transformer == 'signal':
         model = SignalTransformer(dataset.tokenizer)
 
@@ -175,7 +178,7 @@ def train_model(dataset_path, devices, transformer, output_path):
     torch.save(model, output_path)
 
 
-def generate_from_model(dataset_path, model_path, transformer, device):
+def generate_from_model(dataset_path, model_path, transformer, device, eval_perplexity):
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
 
@@ -195,12 +198,22 @@ def generate_from_model(dataset_path, model_path, transformer, device):
 
     test_loader = DataLoader(dataset.test, batch_size=32, collate_fn=list, shuffle=False)
 
+    perplexities = []
     for batch in test_loader:
         g = model.generate(batch)
-
         for e, pred in zip(batch, g):
             print('#' * 50)
             print('Context:', e.context)
             print('Signal:', e.signal)
             print('Ground truth:', e.answer)
             print('Sample from model:', pred)
+            if eval_perplexity:
+                loss = model.training_step(batch, 0, log=False, restrict_loss=True).detach()
+                perplexity = torch.exp(loss)
+                perplexities.append(perplexity)
+                print('Perplexity:', perplexity)
+        if eval_perplexity:
+            perplexities = torch.tensor(perplexities)
+            avg_perplexity = torch.mean(perplexities)
+            print('Average Perplexity:', avg_perplexity)
+            return avg_perplexity

@@ -19,6 +19,10 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', help='Path to pre-processed dataset.')
     parser.add_argument('--devices', help='Torch device to run on.', default= 'cpu')
     parser.add_argument('--transformer', help='which transformer to use', default= 'vanilla')
+    parser.add_argument('--strat', help='which training strategy to use', default= 'ddp')
+    parser.add_argument('--n_head', help='number of heads', default= 12, type = int)
+    parser.add_argument('--n_layer', help='number of layers', default= 12, type = int)
+    parser.add_argument('--eval_perplexity', help='compute average perpexity on test set', action='store_true')
 
     opt = parser.parse_args()
 
@@ -32,6 +36,9 @@ if __name__ == '__main__':
                 opt.dataset, 
                 [] if opt.devices == 'cpu' else list(map(int, opt.devices.split(','))),
                 opt.transformer,
-                opt.output)
+                opt.output,
+                opt.strat,
+                opt.n_head,
+                opt.n_layer)
     elif opt.test:
-        generate_from_model(opt.dataset, opt.model, opt.transformer, torch.device(opt.devices))
+        generate_from_model(opt.dataset, opt.model, opt.transformer,[] if opt.devices == 'cpu' else int(opt.devices), opt.eval_perplexity)
