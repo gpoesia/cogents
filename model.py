@@ -164,7 +164,7 @@ class CogentTransformer(VanillaTransformer):
         bert_config = BertConfig(
             vocab_size=tokenizer.get_vocab_size(),
             hidden_size=embedding_dim,
-            num_hidden_layers=8,
+            num_hidden_layers=3,
             num_attention_heads=8,
             intermediate_size=4*embedding_dim,
             max_position_embeddings=512,
@@ -307,6 +307,8 @@ class CogentTransformer(VanillaTransformer):
 
         if log:
             self.log('train_loss', loss)
+            self.log('rec_loss', rec_loss)
+            self.log('kl_loss', kl_loss)
 
         return loss
 
@@ -330,11 +332,6 @@ def train_model(dataset_path, devices, transformer, output_path, strat='ddp', n_
 
     logger = WandbLogger(project="cogent")
 
-    if strat =='ddp':
-        trainer = pl.Trainer(devices=devices, accelerator="auto", strategy=strat, logger=logger)
-    else:
-        trainer = pl.Trainer(devices=devices, accelerator="auto", logger=logger)
-
     train_loader = DataLoader(dataset.train, batch_size=32, collate_fn=list, shuffle=True)
     val_loader = DataLoader(dataset.val, batch_size=32, collate_fn=list)
 
@@ -344,6 +341,16 @@ def train_model(dataset_path, devices, transformer, output_path, strat='ddp', n_
         model = SignalTransformer(dataset.tokenizer)
     elif transformer == 'cogent':
         model = CogentTransformer(dataset.tokenizer, n_head=n_head, n_layer=n_layer)
+
+    ckpt = pl.callbacks.ModelCheckpoint(dirpath=f'checkpoints/',
+                                        monitor='validation_loss',
+                                        save_top_k=-1,
+                                        filename='{transformer}-{epoch}')
+
+    if strat =='ddp':
+        trainer = pl.Trainer(devices=devices, accelerator="auto", strategy=strat, logger=logger, max_epochs=10, checkpoint_callback=ckpt)
+    else:
+        trainer = pl.Trainer(devices=devices, accelerator="auto", logger=logger)
 
     trainer.fit(model, train_loader, val_loader)
     torch.save(model, output_path)
