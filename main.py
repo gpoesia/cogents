@@ -34,7 +34,7 @@ if __name__ == '__main__':
     elif opt.train:
         train_model(
                 opt.dataset, 
-                [] if opt.devices == 'cpu' else list(map(int, opt.devices.split(','))),
+                None if opt.devices == 'cpu' else list(map(int, opt.devices.split(','))),
                 opt.transformer,
                 opt.output,
                 opt.strat,
