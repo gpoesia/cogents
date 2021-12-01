@@ -2,6 +2,8 @@
 
 import torch
 import torch.nn.functional as F
+from sentence_transformers import SentenceTransformer, util
+import itertools
 
 
 def sample_gaussian(m, v):
@@ -75,3 +77,23 @@ def kl_normal(qm, qv, pm, pv):
     element_wise = 0.5 * (torch.log(pv) - torch.log(qv) + qv / pv + (qm - pm).pow(2) / pv - 1)
     kl = element_wise.sum(-1)
     return kl
+
+def diversity_metric(sentences):
+    """
+    Args:
+        sentences: set of strings
+
+    Return:
+        avg_par: tensor(single value): average pairwise similarity between all strings in the set sentences
+    """
+    embeddings = [model.encode(s) for s in sentences]
+    pairs = list(itertools.combinations(embeddings, 2))
+    sims = []
+    for p in pairs:
+        sim = util.pytorch_cos_sim(p[0], p[1])
+        sims.append(sim)
+    avg_par = torch.mean(torch.stack(sims), dim = 0)
+    return avg_par
+
+
+
