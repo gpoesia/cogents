@@ -343,17 +343,18 @@ def train_model(dataset_path, devices, transformer, output_path, strat='ddp', n_
         model = CogentTransformer(dataset.tokenizer, n_head=n_head, n_layer=n_layer)
 
     ckpt = pl.callbacks.ModelCheckpoint(dirpath=f'checkpoints/',
-                                        monitor='validation_loss',
                                         save_top_k=-1,
+                                        verbose=True,
+                                        save_weights_only=True,
                                         filename='{transformer}-{epoch}')
 
     if strat =='ddp':
-        trainer = pl.Trainer(devices=devices, accelerator="auto", strategy=strat, logger=logger, max_epochs=10, checkpoint_callback=ckpt)
+        trainer = pl.Trainer(devices=devices, accelerator="auto", strategy=strat, logger=logger, max_epochs=10, callbacks=[ckpt])
     else:
         trainer = pl.Trainer(devices=devices, accelerator="auto", logger=logger)
 
     trainer.fit(model, train_loader, val_loader)
-    torch.save(model, output_path)
+    torch.save(model.state_dict(), output_path)
 
 
 def generate_from_model(dataset_path, model_path, transformer, device, eval_perplexity):
