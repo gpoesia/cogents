@@ -326,6 +326,7 @@ class CogentTransformer(VanillaTransformer):
 
 
 def train_model(dataset_path, devices, transformer, output_path, strat='ddp', n_head = 12, n_layer = 12):
+    print('starting')
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
     print('Using devices', devices)

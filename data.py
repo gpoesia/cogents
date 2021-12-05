@@ -5,10 +5,15 @@ from dataclasses import dataclass
 from typing import List, Dict
 import random
 from tqdm import tqdm
+import gzip
+import json
+import re
 
 import torch
 from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, decoders, trainers
 from tokenizers.trainers import BpeTrainer, WordPieceTrainer
+
+from functools import reduce
 
 
 @dataclass
@@ -68,7 +73,6 @@ def build_rocstories_dataset(output):
             return [ShortStory(title=row['storytitle'],
                                lines=[row[f'sentence{i}'] for i in range(1, 6)])
                     for row in csv.DictReader(f)]
-
     rocstories = (load_rocstories('datasets/rocstories_2016.csv') +
                   load_rocstories('datasets/rocstories_2017.csv'))
 
@@ -83,7 +87,7 @@ def build_rocstories_dataset(output):
                     target_words = s.lines[target_line].split()
                     signal = random.sample(target_words, min(k, len(target_words)))
                     ex.append(Example('\n'.join(context_lines), ' '.join(signal), s.lines[target_line]))
-
+        breakpoint()
         return ex
 
     print(len(rocstories), 'stories loaded.')
@@ -94,6 +98,45 @@ def build_rocstories_dataset(output):
     tokenizer = train_tokenizer(tokenizer_data)
 
     train_ex, val_ex, test_ex = make_examples(train), make_examples(val), make_examples(test)
+    d = Dataset(train_ex, val_ex, test_ex, tokenizer)
+    print(len(train_ex), 'training examples.')
+    torch.save(d, output)
+
+def build_github_dataset(output, language = 'Python'):
+    def load_github(path):
+        with gzip.open(path, 'rb') as f:
+            f = json.load(f)
+            return (f[language]['train'], f[language]['dev'], f[language]['test'])
+
+    train, val, test = (load_github('datasets/large.json.gz'))
+
+    def sum(a,b):
+        return a + b
+
+    def make_examples(lines):
+        ex = []
+        for l in tqdm(lines):
+            l = str(l)
+            l = re.split('\.| ', str(l))
+            for k in range(1, 4):
+                target = random.randint(0, len(l) - 1)
+                context_words = l[:target]
+                if context_words == []:
+                    context = ''
+                else:
+                    context = reduce(sum, context_words)
+                target_words = l[target:]
+                answer = reduce(sum, target_words)
+                signal = random.sample(target_words, min(k, len(target_words)))
+                signal = reduce(sum, signal)
+                ex.append(Example(context, signal, answer))
+        return ex
+
+    print(len(train) + len(val) + len(test),  'lines of code loaded.')
+    tokenizer = train_tokenizer(train)
+    train_ex = make_examples(train)
+    val_ex = make_examples(val)
+    test_ex = make_examples(test)
     d = Dataset(train_ex, val_ex, test_ex, tokenizer)
     print(len(train_ex), 'training examples.')
     torch.save(d, output)

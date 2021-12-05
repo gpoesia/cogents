@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-from data import build_rocstories_dataset
+from data import build_rocstories_dataset, build_github_dataset
 from model import train_model, generate_from_model
 
 import torch
@@ -14,6 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--rocstories', action='store_true')
     parser.add_argument('--github', action='store_true')
+    parser.add_argument('--language', help='Java, Python, or Haskell', default = 'Python')
     parser.add_argument('--model', help='Path to trained model.')
     parser.add_argument('--output', help='Path to output file.')
     parser.add_argument('--dataset', help='Path to pre-processed dataset.')
@@ -29,6 +30,8 @@ if __name__ == '__main__':
     if opt.build_dataset:
         if opt.rocstories:
             build_rocstories_dataset(opt.output)
+        elif opt.github:
+            build_github_dataset(opt.output, opt.language)
         else:
             raise ValueError('Specify one of --rocstories or --github')
     elif opt.train:
