@@ -156,7 +156,7 @@ class SignalTransformer(VanillaTransformer):
 
 
 class CogentTransformer(VanillaTransformer):
-    def __init__(self, tokenizer=None, config={}, device=None, n_head = 2, n_layer=2):
+    def __init__(self, tokenizer=None, config={}, device=None, n_head = 12, n_layer=12):
         super().__init__(tokenizer, config, device, n_head, n_layer)
 
         embedding_dim = config.get('embedding_dim', 768)
@@ -362,6 +362,8 @@ def generate_from_model(dataset_path, model_path, transformer, device, eval_perp
     dataset = torch.load(dataset_path)
     print('Loaded dataset', dataset_path)
 
+    device = torch.device(device)
+
     if model_path is None:
         model = VanillaTransformer(dataset.tokenizer)
         model.to(device=device)
@@ -372,28 +374,44 @@ def generate_from_model(dataset_path, model_path, transformer, device, eval_perp
             model = VanillaTransformer(dataset.tokenizer)
         elif transformer == 'signal':
             model = SignalTransformer(dataset.tokenizer)
+        elif transformer == 'cogent':
+            model = CogentTransformer(dataset.tokenizer)
 
         model.load_state_dict(pl_state['state_dict'])
         model.to(device)
 
-    test_loader = DataLoader(dataset.test, batch_size=32, collate_fn=list, shuffle=False)
+    test_loader = DataLoader(dataset.test[:1000], batch_size=32, collate_fn=list, shuffle=False)
 
     perplexities = []
-    for batch in test_loader:
-        g = model.generate(batch)
-        for e, pred in zip(batch, g):
-            print('#' * 50)
+    diversities = []
+
+    for i, batch in enumerate(test_loader):
+        g1 = model.generate(batch)
+        g2 = model.generate(batch)
+        g3 = model.generate(batch)
+
+        for e, pred1, pred2, pred3 in zip(batch, g1, g2, g3):
+            print('#', i, '#' * 50)
             print('Context:', e.context)
             print('Signal:', e.signal)
             print('Ground truth:', e.answer)
-            print('Sample from model:', pred)
+            print('Sample 1 from model:', pred1)
+            print('Sample 2 from model:', pred2)
+            print('Sample 3 from model:', pred3)
+
             if eval_perplexity:
                 loss = model.training_step(batch, 0, log=False).detach()
-                perplexity = torch.exp(loss)
+                perplexity = torch.exp(loss).item()
                 perplexities.append(perplexity)
                 print('Perplexity:', perplexity)
-        if eval_perplexity:
-            perplexities = torch.tensor(perplexities)
-            avg_perplexity = torch.mean(perplexities)
-            print('Average Perplexity:', avg_perplexity)
-            return avg_perplexity
+
+            diversity = utils.diversity_metric([pred1, pred2, pred3])
+            diversities.append(diversity)
+            print('Diversity:', diversity)
+
+    print('Average Diversity:', torch.tensor(diversities).mean().item())
+    if eval_perplexity:
+        perplexities = torch.tensor(perplexities)
+        avg_perplexity = torch.mean(perplexities).item()
+        print('Average Perplexity:', avg_perplexity)
+        return avg_perplexity

@@ -78,6 +78,9 @@ def kl_normal(qm, qv, pm, pv):
     kl = element_wise.sum(-1)
     return kl
 
+diversity_model = SentenceTransformer('all-MiniLM-L12-v2')
+diversity_model.to(torch.device(8))
+
 def diversity_metric(sentences):
     """
     Args:
@@ -86,14 +89,11 @@ def diversity_metric(sentences):
     Return:
         avg_par: tensor(single value): average pairwise similarity between all strings in the set sentences
     """
-    embeddings = [model.encode(s) for s in sentences]
+    embeddings = [diversity_model.encode(s) for s in sentences]
     pairs = list(itertools.combinations(embeddings, 2))
     sims = []
     for p in pairs:
-        sim = util.pytorch_cos_sim(p[0], p[1])
+        sim = 1 - util.pytorch_cos_sim(p[0], p[1])
         sims.append(sim)
-    avg_par = torch.mean(torch.stack(sims), dim = 0)
+    avg_par = torch.mean(torch.stack(sims), dim = 0).flatten().item()
     return avg_par
-
-
-
