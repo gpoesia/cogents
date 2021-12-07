@@ -52,6 +52,19 @@ def train_tokenizer(data):
     return tokenizer
 
 
+def train_code_tokenizer(data):
+    tokenizer = Tokenizer(models.BPE())
+    tokenizer.decoder = decoders.BPE()
+
+    trainer = BpeTrainer(
+        special_tokens=["[UNK]", "[SIG]", "[SEP]", "[PAD]", "[MASK]", "[BOS]", "[EOS]"],
+        vocab_size=2048,
+    )
+
+    tokenizer.train_from_iterator(data, trainer)
+    return tokenizer
+
+
 def random_split(l, proportions):
     splits = []
     l = l.copy()
@@ -102,41 +115,66 @@ def build_rocstories_dataset(output):
     print(len(train_ex), 'training examples.')
     torch.save(d, output)
 
+def split_at_identifier_boundaries(s):
+    '''Returns a list of strings obtained by splitting s at identifier boundaries.
+
+    Example: split_at_identifier_boundaries('self.x0 += 2') == ('self', '.', 'x0', ' += 2')
+    '''
+
+    tokens = []
+    is_in_id = False
+
+    for c in s:
+        if c.isidentifier() or (is_in_id and c.isdigit()):
+            if not is_in_id:
+                tokens.append('')
+                is_in_id = True
+        else:
+            if is_in_id or len(tokens) == 0:
+                tokens.append('')
+                is_in_id = False
+        tokens[-1] += c
+
+    return tuple(tokens)
+
+def extract_identifiers(l):
+    tokens = split_at_identifier_boundaries(l)
+    return [t for t in tokens if t[0].isidentifier()]
+
 def build_github_dataset(output, language = 'Python'):
     def load_github(path):
-        with gzip.open(path, 'rb') as f:
+        with open(path) as f:
             f = json.load(f)
             return (f[language]['train'], f[language]['dev'], f[language]['test'])
 
-    train, val, test = (load_github('datasets/large.json.gz'))
+    train, val, test = (load_github('datasets/files-python.json'))
 
-    def sum(a,b):
-        return a + b
-
-    def make_examples(lines):
+    def make_examples(files):
         ex = []
-        for l in tqdm(lines):
-            l = str(l)
-            l = re.split('\.| ', str(l))
-            for k in range(1, 4):
-                target = random.randint(0, len(l) - 1)
-                context_words = l[:target]
-                if context_words == []:
-                    context = ''
-                else:
-                    context = reduce(sum, context_words)
-                target_words = l[target:]
-                answer = reduce(sum, target_words)
-                signal = random.sample(target_words, min(k, len(target_words)))
-                signal = reduce(sum, signal)
+        for f in tqdm(files):
+            lines = list(filter(None, [l.strip() for l in f.split('\n')]))
+
+            for i, l in enumerate(lines):
+                if i < 2:
+                    continue
+                identifiers = extract_identifiers(l)
+
+                if len(identifiers) < 3:
+                    continue
+
+                context = lines[i-2:i]
+                signal = ' '.join(random.sample(identifiers, random.randint(1, 3)))
+                answer = l
                 ex.append(Example(context, signal, answer))
         return ex
 
-    print(len(train) + len(val) + len(test),  'lines of code loaded.')
+    print(len(train) + len(val) + len(test), language, 'files loaded.')
     tokenizer = train_tokenizer(train)
+    random.seed('cogents-code')
     train_ex = make_examples(train)
     val_ex = make_examples(val)
     test_ex = make_examples(test)
+    breakpoint()
     d = Dataset(train_ex, val_ex, test_ex, tokenizer)
     print(len(train_ex), 'training examples.')
     torch.save(d, output)

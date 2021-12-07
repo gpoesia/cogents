@@ -79,7 +79,7 @@ def kl_normal(qm, qv, pm, pv):
     return kl
 
 diversity_model = SentenceTransformer('all-MiniLM-L12-v2')
-diversity_model.to(torch.device(8))
+# diversity_model.to(torch.device(8))
 
 def diversity_metric(sentences):
     """

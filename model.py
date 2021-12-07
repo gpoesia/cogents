@@ -347,7 +347,7 @@ def train_model(dataset_path, devices, transformer, output_path, strat='ddp', n_
                                         save_top_k=-1,
                                         verbose=True,
                                         save_weights_only=True,
-                                        filename='{transformer}-{epoch}')
+                                        filename=(transformer + '-{epoch}'))
 
     if strat =='ddp':
         trainer = pl.Trainer(devices=devices, accelerator="auto", strategy=strat, logger=logger, max_epochs=10, callbacks=[ckpt])
