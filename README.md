@@ -5,13 +5,5 @@ CS236 project
 
 TODO:
 
-- [ ] Basic pipeline:
-  - [X] Load & tokenize dataset
-  - [X] Train a simple Transformer language model
-  - [ ] Evaluate perplexity on test data
-  - [ ] Implement --build-dataset for code dataset
-- [X] Baselines:
-  - [X] Fill-in-the-blanks paper
-- [ ] Model:
-  - [ ] LM with signal embedding (the "slices") + variational global embedding
-  - [ ] Model with richer prior (can try GMM like in hw2) 
+- [ ] Debug CUDA assertions thrown midway when training on code dataset
+- [ ] Try richer variational prior (e.g., GMM or flow model) 
